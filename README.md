@@ -266,6 +266,7 @@ Add the following to your `claude_desktop_config.json`:
 ### Environment Variables
 
 1. `MAIL_TOKEN`: Required. Your Infomaniak API token.
+2. `MAIL_READ_ONLY`: Optional. Set to `true` (or `1`, `yes`) to register only the tools that cannot change the mailbox: `mail_list_mailboxes`, `mail_list_folders`, `mail_list_emails`, `mail_search_emails`, `mail_read_email`, `mail_download_attachment` and `mail_list_drafts`. Sending, drafting, moving, flagging, archiving and deleting tools are not exposed at all. Useful when an assistant should read mail but never act on it. The API token itself keeps its full rights, so this is a guard on the MCP surface, not a token restriction.
 
 ### Troubleshooting
 

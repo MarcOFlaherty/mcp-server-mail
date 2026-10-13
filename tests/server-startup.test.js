@@ -16,14 +16,14 @@ const packageJson = JSON.parse(
 // performs the MCP `initialize` handshake over stdio, then — when follow-up
 // requests are given — sends the `initialized` notification plus those requests
 // and resolves with the last JSON-RPC response (or null on timeout).
-function connectViaSymlink(followUpRequests = [], timeoutMs = 8000) {
+function connectViaSymlink(followUpRequests = [], timeoutMs = 8000, extraEnv = {}) {
     return new Promise((resolve) => {
         const linkDir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-bin-"));
         const link = path.join(linkDir, "mcp-server-mail");
         fs.symlinkSync(entry, link);
 
         const child = spawn(process.execPath, [link], {
-            env: { ...process.env, MAIL_TOKEN: "test-token" },
+            env: { ...process.env, MAIL_TOKEN: "test-token", ...extraEnv },
             stdio: ["pipe", "pipe", "pipe"],
         });
 
@@ -127,5 +127,62 @@ describe("server startup", () => {
         assert.ok(flagged, "inputSchema should declare flagged");
         assert.strictEqual(flagged.type, "boolean", "flagged should be a boolean");
         assert.ok(flagged.default !== true, "flagged should default to false/undefined");
+    });
+});
+
+describe("read-only mode", () => {
+    const readOnlyTools = [
+        "mail_download_attachment",
+        "mail_list_drafts",
+        "mail_list_emails",
+        "mail_list_folders",
+        "mail_list_mailboxes",
+        "mail_read_email",
+        "mail_search_emails",
+    ];
+    const listTools = (extraEnv) => connectViaSymlink(
+        [{ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }],
+        8000,
+        extraEnv,
+    );
+
+    it("exposes write tools by default", async () => {
+        const response = await listTools({});
+        const names = response.result.tools.map((t) => t.name);
+        assert.ok(names.includes("mail_send_email"));
+        assert.ok(names.includes("mail_delete_email"));
+        for (const name of readOnlyTools) {
+            assert.ok(names.includes(name), `${name} should exist`);
+        }
+    });
+
+    it("lists only read tools when MAIL_READ_ONLY=true", async () => {
+        const response = await listTools({ MAIL_READ_ONLY: "true" });
+        const names = response.result.tools.map((t) => t.name).sort();
+        assert.deepStrictEqual(names, readOnlyTools);
+    });
+
+    it("rejects a write tool call when MAIL_READ_ONLY=true", async () => {
+        const response = await connectViaSymlink(
+            [{
+                jsonrpc: "2.0",
+                id: 2,
+                method: "tools/call",
+                params: {
+                    name: "mail_send_email",
+                    arguments: { to: ["someone@example.com"], subject: "x", body: "x" },
+                },
+            }],
+            8000,
+            { MAIL_READ_ONLY: "true" },
+        );
+        const failed = Boolean(response?.error) || response?.result?.isError === true;
+        assert.ok(failed, "calling mail_send_email must fail in read-only mode");
+    });
+
+    it("ignores values other than 1, true or yes", async () => {
+        const response = await listTools({ MAIL_READ_ONLY: "false" });
+        const names = response.result.tools.map((t) => t.name);
+        assert.ok(names.includes("mail_send_email"));
     });
 });

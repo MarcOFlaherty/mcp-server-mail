@@ -34,6 +34,24 @@ const token = process.env.MAIL_TOKEN;
 
 const mailClient = new MailClient(token);
 
+// Read-only mode: only tools that cannot change the mailbox are registered.
+// This is an allowlist, so a tool added later stays hidden until it is listed here.
+const READ_ONLY_TOOLS = new Set([
+    "mail_list_mailboxes",
+    "mail_list_folders",
+    "mail_list_emails",
+    "mail_search_emails",
+    "mail_read_email",
+    "mail_download_attachment",
+    "mail_list_drafts",
+]);
+
+if (/^(1|true|yes)$/i.test(process.env.MAIL_READ_ONLY ?? "")) {
+    const registerTool = server.tool.bind(server) as (name: string, ...rest: unknown[]) => unknown;
+    server.tool = ((name: string, ...rest: unknown[]) =>
+        READ_ONLY_TOOLS.has(name) ? registerTool(name, ...rest) : undefined) as typeof server.tool;
+}
+
 server.tool(
     "mail_list_mailboxes",
     "List all mailboxes in the Infomaniak account",
